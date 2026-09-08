@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Michael Botes — Diesel // Ink // Riffs</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#08090c;color:#fff;font-family:monospace;height:100%;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center}
+#wrap{width:min(100vw,1100px);height:100vh;display:flex;flex-direction:column}
+#hud{height:62px;background:#11141a;border-bottom:2px solid #3a3f49;display:flex;align-items:center;gap:14px;padding:8px 12px;flex-wrap:wrap}
+#hud b{color:#ffd54a}.stat{white-space:nowrap}
+#game{display:block;width:100%;flex:1;min-height:0;background:#0b0d11;image-rendering:pixelated;touch-action:none}
+#menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);padding:18px}
+.panel{max-width:700px;width:100%;background:#141820;border:3px solid #e7e7e7;box-shadow:8px 8px 0 #000;padding:24px;text-align:center}
+h1{font-size:clamp(22px,6vw,48px);margin:0 0 8px;color:#ffd54a}
+h2{margin:8px 0 18px;color:#8ee6ff}
+p{line-height:1.5;color:#d6d9df}
+button{font:inherit;font-weight:bold;border:3px solid #fff;background:#252b35;color:#fff;padding:12px 18px;margin:5px;cursor:pointer;box-shadow:4px 4px 0 #000}
+button:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #000}
+#touch{position:absolute;bottom:10px;left:10px;right:10px;display:flex;justify-content:space-between;pointer-events:none}
+.pad,.actions{display:flex;gap:8px;pointer-events:auto}
+.tbtn{width:62px;height:62px;border:2px solid #aaa;background:rgba(20,24,32,.8);color:#fff;font:700 22px monospace;border-radius:10px}
+@media(min-width:800px){#touch{display:none}}
+.small{font-size:12px;color:#9ba3af}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="stat">❤️ <b id="hp">5</b></div>
+    <div class="stat">XP <b id="xp">0</b></div>
+    <div class="stat">SCORE <b id="score">0</b></div>
+    <div class="stat">STAGE <b id="stage">1/6</b></div>
+    <div class="stat" id="objective">Collect the tools</div>
+  </div>
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+
+<div id="menu">
+ <div class="panel" id="panel">
+  <h1>MICHAEL BOTES</h1>
+  <h2>DIESEL // INK // RIFFS</h2>
+  <p>Six pixel-art stages built around diesel work, the Hilux, drum brakes, tattoos, heavy riffs, space, Voyager, and the legendary 55mm mast.</p>
+  <p><b>Keyboard:</b> A/D or ←/→ move · W/Space jump · E action · P pause</p>
+  <p><b>Phone:</b> use the buttons at the bottom.</p>
+  <button id="play">PLAY GAME</button>
+  <button id="how">HOW TO PLAY</button>
+  <div class="small">No external assets. Runs directly in your browser.</div>
+ </div>
+</div>
+
+<div id="touch">
+ <div class="pad">
+  <button class="tbtn" id="left">◀</button>
+  <button class="tbtn" id="right">▶</button>
+ </div>
+ <div class="actions">
+  <button class="tbtn" id="jump">▲</button>
+  <button class="tbtn" id="act">E</button>
+ </div>
+</div>
+
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+const W=c.width,H=c.height;
+const keys={left:false,right:false,jump:false,action:false};
+let state='menu',stage=0,score=0,xp=0,hp=5,cam=0,items=[],enemies=[],platforms=[],boss=null;
+let player={x:80,y:400,w:28,h:42,vx:0,vy:0,on:false,inv:0};
+const stages=[
+ {name:'DIESEL WORKSHOP',items:['10MM','TORX','SOCKET','RATCHET','FILTER','SCAN'],goal:'Collect every tool',color:'#2d5a75'},
+ {name:'HILUX ELECTRICS',items:['RELAY','BULLBAR','LIGHT','HILUX','FUSE','EARTH'],goal:'Wire the lights',color:'#594b2b'},
+ {name:'BRAKE DRUM BOSS',items:['SPRING','SHOE','ADJUSTER','DRUM'],goal:'Beat THE DRUM',color:'#5a3030',boss:'THE DRUM'},
+ {name:'TATTOO FORGE',items:['SWORD','HORN','INK','RUNE','STEEL'],goal:'Forge the design',color:'#402b55'},
+ {name:'RIFFS & COSMOS',items:['GUITAR','RIFF','REAPER','VOYAGER','ANDROMEDA'],goal:'Reach the stars',color:'#172f5a'},
+ {name:'THE 55MM MAST',items:['55MM','9000 PSI','MAST','CUP','TORQUE'],goal:'Defeat the final mast',color:'#3d3528',boss:'55MM MAST'}
+];
+
+function resetStage(){
+ cam=0; items=[]; enemies=[]; boss=null;
+ player={x:70,y:390,w:28,h:42,vx:0,vy:0,on:false,inv:0};
+ platforms=[{x:0,y:480,w:3000,h:60},{x:240,y:400,w:150,h:18},{x:500,y:350,w:180,h:18},{x:760,y:420,w:160,h:18},{x:1000,y:330,w:180,h:18},{x:1280,y:400,w:190,h:18},{x:1570,y:320,w:190,h:18},{x:1880,y:390,w:180,h:18},{x:2160,y:300,w:200,h:18},{x:2460,y:390,w:220,h:18}];
+ let xs=[180,330,540,800,1040,1300,1600,1910,2200,2500];
+ stages[stage].items.forEach((name,i)=>items.push({x:xs[i]||700+i*250,y:stage===4?230:370,w:30,h:30,name,got:false}));
+ for(let i=0;i<9;i++) enemies.push({x:380+i*270,y:438,w:30,h:30,vx:(i%2?-.7:.7),dead:false});
+ if(stages[stage].boss) boss={x:2740,y:330,w:100,h:100,hp:12,max:12};
+ updateHud();
+}
+function updateHud(){
+ document.getElementById('hp').textContent=hp;
+ document.getElementById('xp').textContent=xp;
+ document.getElementById('score').textContent=score;
+ document.getElementById('stage').textContent=(stage+1)+'/6';
+ document.getElementById('objective').textContent=stages[stage].goal;
+}
+function start(){stage=0;score=0;xp=0;hp=5;state='play';document.getElementById('menu').style.display='none';resetStage();}
+function rect(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function hurt(){if(player.inv>0)return;hp--;player.inv=90;updateHud();if(hp<=0){state='dead';showMenu('GAME OVER','The workshop won this round.','TRY AGAIN');}}
+function showMenu(title,text,button){
+ document.getElementById('menu').style.display='flex';
+ document.getElementById('panel').innerHTML=`<h1>${title}</h1><p>${text}</p><button id="again">${button}</button>`;
+ document.getElementById('again').onclick=()=>{document.getElementById('menu').style.display='none';start();}
+}
+function nextStage(){
+ if(stage<5){stage++;xp+=100;score+=500;resetStage();}
+ else{state='win';showMenu('LEGEND COMPLETE','Michael Botes finished the ultimate Diesel // Ink // Riffs run.','PLAY AGAIN');}
+}
+function update(){
+ if(state!=='play')return;
+ if(player.inv>0)player.inv--;
+ player.vx=(keys.left?-4:0)+(keys.right?4:0); if(!keys.left&&!keys.right)player.vx*=.75;
+ if(keys.jump&&player.on){player.vy=-11;player.on=false}
+ player.vy+=.5; if(player.vy>14)player.vy=14;
+ player.x+=player.vx;
+ for(const p of platforms){
+   if(rect({...player,y:player.y+player.vy},p)&&player.vy>=0&&player.y+player.h<=p.y+12){player.y=p.y-player.h;player.vy=0;player.on=true}
+ }
+ player.y+=player.vy;
+ if(player.y>H+100){player.x=80;player.y=350;player.vy=0;hurt()}
+ if(player.x<0)player.x=0;
+ for(const it of items)if(!it.got&&rect(player,it)){it.got=true;score+=100;xp+=10;updateHud()}
+ for(const e of enemies){
+   if(e.dead)continue;e.x+=e.vx;if(e.x<120||e.x>2600)e.vx*=-1;
+   if(rect(player,e)){if(player.vy>2){e.dead=true;score+=150;xp+=20;player.vy=-8;updateHud()}else hurt()}
+ }
+ if(boss){
+   if(rect(player,boss)&&keys.action&&player.x<boss.x){boss.hp--;score+=25;keys.action=false;updateHud()}
+   if(rect(player,boss)&&player.x+player.w>boss.x)hurt();
+ }
+ cam=Math.max(0,Math.min(2200,player.x-300));
+ const all=items.every(i=>i.got);
+ if(all && (!boss||boss.hp<=0) && player.x>2600)nextStage();
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle=stages[stage].color;ctx.fillRect(0,0,W,H);
+ // sky/space accents
+ ctx.fillStyle='rgba(255,255,255,.18)';
+ for(let i=0;i<80;i++){let x=(i*137-cam*.15)%W;if(x<0)x+=W;let y=(i*71)%300;ctx.fillRect(x,y,2,2)}
+ ctx.save();ctx.translate(-cam,0);
+ // distant silhouettes
+ ctx.fillStyle='rgba(0,0,0,.25)';for(let x=0;x<3000;x+=90)ctx.fillRect(x,440-(x%130),55,40);
+ for(const p of platforms){ctx.fillStyle='#1a1d23';ctx.fillRect(p.x,p.y,p.w,p.h);ctx.fillStyle='#8a8f98';ctx.fillRect(p.x,p.y,p.w,4)}
+ // items
+ for(const it of items)if(!it.got){
+   ctx.fillStyle='#ffd54a';ctx.fillRect(it.x,it.y,it.w,it.h);
+   ctx.fillStyle='#111';ctx.font='bold 9px monospace';ctx.fillText(it.name,it.x-5,it.y-5);
+ }
+ // enemies
+ for(const e of enemies)if(!e.dead){ctx.fillStyle='#c33';ctx.fillRect(e.x,e.y,e.w,e.h);ctx.fillStyle='#fff';ctx.fillRect(e.x+7,e.y+7,5,5);ctx.fillRect(e.x+18,e.y+7,5,5)}
+ // boss
+ if(boss&&boss.hp>0){ctx.fillStyle='#111';ctx.fillRect(boss.x,boss.y,boss.w,boss.h);ctx.strokeStyle='#ffd54a';ctx.lineWidth=5;ctx.strokeRect(boss.x,boss.y,boss.w,boss.h);ctx.fillStyle='#f44';ctx.fillRect(boss.x,boss.y-16,boss.w*(boss.hp/boss.max),8);ctx.fillStyle='#fff';ctx.font='bold 13px monospace';ctx.fillText(boss===null?'':stages[stage].boss,boss.x-5,boss.y-23)}
+ // player
+ if(player.inv%8<4){ctx.fillStyle='#f2c7a5';ctx.fillRect(player.x+8,player.y,14,14);ctx.fillStyle='#20252d';ctx.fillRect(player.x+6,player.y-4,18,7);ctx.fillStyle='#3b82f6';ctx.fillRect(player.x+4,player.y+14,20,18);ctx.fillStyle='#111';ctx.fillRect(player.x+5,player.y+32,7,10);ctx.fillRect(player.x+18,player.y+32,7,10)}
+ ctx.fillStyle='#fff';ctx.font='bold 18px monospace';ctx.fillText(stages[stage].name,30,35);
+ ctx.font='12px monospace';ctx.fillText('COLLECT EVERYTHING • THEN REACH THE RIGHT SIDE',30,54);
+ ctx.restore();
+}
+function loop(){update();draw();requestAnimationFrame(loop)}
+loop();
+
+document.getElementById('play').onclick=start;
+document.getElementById('how').onclick=()=>{document.getElementById('panel').innerHTML=`<h1>HOW TO PLAY</h1><p>Collect every yellow item. Stomp red enemies. On boss stages, stand to the left of the boss and press E to attack. Reach the far right after completing the objective.</p><p>Keyboard: A/D or arrows · W/Space · E · P</p><button id="back">BACK</button>`;document.getElementById('back').onclick=()=>location.reload()};
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=true;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=true;if(e.key==='ArrowUp'||e.key.toLowerCase()==='w'||e.code==='Space')keys.jump=true;if(e.key.toLowerCase()==='e')keys.action=true;if(e.key.toLowerCase()==='p')state=state==='play'?'pause':'play'});
+window.addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=false;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=false;if(e.key==='ArrowUp'||e.key.toLowerCase()==='w'||e.code==='Space')keys.jump=false;if(e.key.toLowerCase()==='e')keys.action=false});
+function hold(id,key){let b=document.getElementById(id);['touchstart','mousedown'].forEach(ev=>b.addEventListener(ev,e=>{e.preventDefault();keys[key]=true}));['touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>b.addEventListener(ev,e=>{e.preventDefault();keys[key]=false}))}
+hold('left','left');hold('right','right');hold('jump','jump');hold('act','action');
+</script>
+</body>
+</html>
